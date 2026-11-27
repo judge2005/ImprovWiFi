@@ -2,14 +2,14 @@
 #include "ImprovWiFi.h"
 
 ImprovWiFi::ImprovWiFi(const char *firmwareName, const char *version, const char *chip, const char *deviceName) :
+    deviceName(deviceName ? deviceName : ""),
     firmwareName(firmwareName),
     version(version),
     chip(chip),
-    deviceName(deviceName),
     pendingResponse(improv::Command::UNKNOWN),
     infoCallback([](const char *) {}),
     debugCallback([](const char *) {}),
-    wifiCallback([this](const char *ssid, const char *password) { infoCallback("Bad callback"); })
+    wifiCallback([this](const char *ssid, const char *password) { set_error(improv::Error::ERROR_UNKNOWN_RPC); })
 {
 }
 
@@ -20,8 +20,21 @@ void ImprovWiFi::setWiFiCallback(std::function<void(const char*, const char*)> c
 void ImprovWiFi::setInfoCallback(std::function<void(const char*)> callback) {
   infoCallback = callback;
 }
-void ImprovWiFi::setDebugCallback(std::function<void(const char*)> callback){
+
+void ImprovWiFi::setDebugCallback(std::function<void(const char*)> callback) {
   debugCallback = callback;
+}
+
+void ImprovWiFi::connectWiFi(const char *ssid, const char *password) {
+  wifiCallback(ssid, password);
+}
+
+void ImprovWiFi::onInfo(const char *msg) {
+  infoCallback(msg);
+}
+
+void ImprovWiFi::onDebug(const char *msg) {
+  debugCallback(msg);
 }
 
 void ImprovWiFi::loop() {
@@ -32,7 +45,7 @@ void ImprovWiFi::loop() {
     }
 
     if (millis() - pendingCmdReceived > 10000) {
-      infoCallback("WiFI Timed Out");
+      onInfo("WiFI Timed Out");
       pendingResponse = improv::Command::UNKNOWN;
       set_state(improv::STATE_STOPPED);
       set_error(improv::Error::ERROR_UNABLE_TO_CONNECT);
@@ -52,10 +65,17 @@ void ImprovWiFi::loop() {
           [this](improv::Error error) { this->onErrorCallback(error); }
         ))
       {
-        x_buffer[x_position++] = b;      
+        x_buffer[x_position++] = b;
+        // Reset position immediately if we just processed the checksum byte
+        if (x_position > 9 && x_position == (size_t)(8 + x_buffer[8] + 2)) {
+          x_position = 0;
+        }
       } else {
-        sprintf(msgBuf, "Extra byte %02x", b);
-        debugCallback(msgBuf);
+        // Only log an error if we were actually mid-packet (ignoring leading newlines/noise)
+        if (x_position > 0) {
+          sprintf(msgBuf, "Extra byte %02x", b);
+          debugCallback(msgBuf);
+        }
         x_position = 0;
       }
     } else {
@@ -68,19 +88,23 @@ void ImprovWiFi::loop() {
 bool ImprovWiFi::onCommandCallback(improv::ImprovCommand cmd) {
   char statusBuf[20];
   sprintf(statusBuf, "Got command %d", cmd.command);
+  onDebug(statusBuf);
 
-  debugCallback(statusBuf);
+  return onCommand(cmd);
+}
+
+bool ImprovWiFi::onCommand(const improv::ImprovCommand &cmd) {
   switch (cmd.command) {
     case improv::Command::GET_CURRENT_STATE:
     {
       if ((WiFi.status() == WL_CONNECTED)) {
-        infoCallback("Improv Connected");
+        onInfo("Improv Connected");
         sendProvisioned(improv::Command::GET_CURRENT_STATE);
       } else {
-        infoCallback("Provisioning");
+        onInfo("Provisioning");
         set_state(improv::State::STATE_AUTHORIZED);
       }
-      
+
       break;
     }
 
@@ -90,31 +114,20 @@ bool ImprovWiFi::onCommandCallback(improv::ImprovCommand cmd) {
         set_error(improv::Error::ERROR_INVALID_RPC);
         break;
       }
-     
+
       set_state(improv::STATE_PROVISIONING);
-      
+
       pendingResponse = cmd.command;
       pendingCmdReceived = millis();
-      infoCallback("Connect WiFi");
-      wifiCallback(cmd.ssid.c_str(), cmd.password.c_str());
-      // Don't try connecting. wifiManager should do that asynchronously 
+      onInfo("Connect WiFi");
+      connectWiFi(cmd.ssid.c_str(), cmd.password.c_str());
+      // Don't try connecting. wifiManager should do that asynchronously
       break;
     }
 
     case improv::Command::GET_DEVICE_INFO:
     {
-      std::vector<std::string> infos = {
-        // Firmware name
-        firmwareName,
-        // Firmware version
-        version,
-        // Hardware chip/variant
-        chip,
-        // Device name
-        deviceName
-      };
-      std::vector<uint8_t> data = improv::build_rpc_response(improv::GET_DEVICE_INFO, infos, false);
-      send_response(data);
+      sendDeviceInfo(deviceName.c_str());
       break;
     }
 
@@ -133,6 +146,21 @@ bool ImprovWiFi::onCommandCallback(improv::ImprovCommand cmd) {
   return true;
 }
 
+void ImprovWiFi::sendDeviceInfo(const char *name) {
+  std::vector<std::string> infos = {
+    // Firmware name
+    firmwareName,
+    // Firmware version
+    version,
+    // Hardware chip/variant
+    chip,
+    // Device name
+    name ? name : ""
+  };
+  std::vector<uint8_t> data = improv::build_rpc_response(improv::GET_DEVICE_INFO, infos, false);
+  send_response(data);
+}
+
 void ImprovWiFi::sendProvisioned(improv::Command responseTo) {
   set_state(improv::STATE_PROVISIONED);
 
@@ -148,13 +176,13 @@ void ImprovWiFi::sendProvisioned(improv::Command responseTo) {
 
   send_response(data);
 
-  infoCallback("Provisioned");
+  onInfo("Provisioned");
 }
 
 void ImprovWiFi::getAvailableWifiNetworks() {
   int networkNum = WiFi.scanNetworks();
 
-  for (int id = 0; id < networkNum; ++id) { 
+  for (int id = 0; id < networkNum; ++id) {
     std::vector<uint8_t> data = improv::build_rpc_response(
             improv::GET_WIFI_NETWORKS, {WiFi.SSID(id), String(WiFi.RSSI(id)), (WiFi.encryptionType(id) == WIFI_AUTH_OPEN ? "NO" : "YES")}, false);
     send_response(data);
@@ -168,7 +196,7 @@ void ImprovWiFi::getAvailableWifiNetworks() {
 
 void ImprovWiFi::onErrorCallback(improv::Error err) {
     sprintf(msgBuf, "Improv Err %d", err);
-    infoCallback(msgBuf);
+    onInfo(msgBuf);
 }
 
 void ImprovWiFi::set_state(improv::State state) {
@@ -182,7 +210,7 @@ void ImprovWiFi::set_state(improv::State state) {
 
   Serial.write(data, sizeof(data));
 
-  debugCallback("Sent state");  
+  onDebug("Sent state");
 }
 
 void ImprovWiFi::send_response(std::vector<uint8_t> &response) {
@@ -197,7 +225,7 @@ void ImprovWiFi::send_response(std::vector<uint8_t> &response) {
 
   Serial.write(data.data(), data.size());
 
-  debugCallback("Response sent");
+  onDebug("Response sent");
 }
 
 void ImprovWiFi::set_error(improv::Error error) {
@@ -211,5 +239,5 @@ void ImprovWiFi::set_error(improv::Error error) {
 
   Serial.write(data, sizeof(data));
 
-  debugCallback("Error sent");
+  onDebug("Error sent");
 }

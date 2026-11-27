@@ -75,6 +75,7 @@ struct ImprovCommand {
   Command command;
   std::string ssid;
   std::string password;
+  std::string payload;
 };
 
 ImprovCommand parse_improv_data(const std::vector<uint8_t> &data, bool check_checksum = true);
