@@ -8,61 +8,129 @@ const char *manifest[] = {
     // Firmware name
     "Test for ImprovWiFi",
     // Firmware version
-    "1.0.0",
-    // Hardware chip/variant
-    "ESP32",
-    // Device name
-    "Whatever"
+    "1.0.0"
 };
+
+Preferences prefs;
+
+void initPrefs() {
+    static bool initialized = false;
+    if (initialized) {
+        return; // Already ran once this boot; do nothing
+    }
+
+    if (prefs.begin("improv", false)) {
+        if (!prefs.isKey("hostname")) {
+            prefs.putString("hostname", "");
+        }
+        if (!prefs.isKey("devicename")) {
+            prefs.putString("devicename", "whatever");
+        }
+        initialized = true;
+    }
+}
+
+const char *getDeviceName() {
+    initPrefs();
+    static String devicename;
+    devicename = prefs.getString("devicename");
+    return devicename.c_str();
+}
+
+const char *getHostName() {
+    initPrefs();
+    static String hostname;
+    hostname = prefs.getString("hostname");
+    return hostname.c_str();
+}
+
+const char *getChipVariant() {
+    return ESP.getChipModel();
+}
 
 class MyImprovWiFiDevice : public ImprovWiFiDevice {
 public:
-    using ImprovWiFiDevice::ImprovWiFiDevice;
-
-    void begin() {
-        prefs.begin("improv", false);
-        WiFi.mode(WIFI_STA);
-
-        String savedHost = prefs.getString("hostname", "");
-        if (savedHost.length() > 0) {
-            WiFi.setHostname(savedHost.c_str());
-        }
-    }
+    MyImprovWiFiDevice(const char *firmwareName, const char *version, const char *chip, const char *deviceName)
+        : ImprovWiFiDevice(firmwareName, version, chip, deviceName)
+    {}
 
 protected:
+    /**
+     * Override the connectWiFi method to use the WiFi library to connect to the specified SSID and password.
+     * This method is called when the device receives a WIFI_SETTINGS command from the Improv protocol.
+     */
     void connectWiFi(const char *ssid, const char *password) override {
         WiFi.disconnect();
         WiFi.begin(ssid, password);
     }
 
+    /**
+     * Override the getHostName method to retrieve the device's hostname from preferences.
+     * This method is called when the device receives a GET_HOSTNAME command from the Improv protocol.
+     */
     bool getHostName(String &hostName) override {
-        hostName = prefs.getString("hostname", "");
-        if (hostName.length() == 0) {
-            const char *current = WiFi.getHostname();
-            hostName = current ? current : "";
-        }
+        hostName = ::getHostName();
         return true;
     }
 
+    /**
+     * Override the setHostName method to save the device's hostname to preferences.
+     * This method is called when the device receives a SET_HOSTNAME command from the Improv protocol.
+     */
     improv::Error setHostName(const char *hostName) override {
         if (prefs.putString("hostname", hostName) == 0) {
             return improv::Error::ERROR_UNKNOWN;
         }
+
+        // A real implementation should also set the hostname in mDNS. That seems to require that
+        // the device is restarted if it is to take effect.
+        // For now, just set the hostname in WiFi and reconnect if already connected.
         WiFi.setHostname(hostName);
+        if (WiFi.isConnected()) {
+            WiFi.disconnect();
+            WiFi.begin();
+        }
+
         return improv::Error::ERROR_NONE;
     }
 
-private:
-    Preferences prefs;
+    /**
+     * Override the getDeviceName method to retrieve the device's name from preferences.
+     * This method is called when the device receives a GET_DEVICENAME command from the Improv protocol.
+     */
+    bool getDeviceName(String &deviceName) override {
+        deviceName = ::getDeviceName();
+        return true;
+    }
+
+    /**
+     * Override the setDeviceName method to save the device's name to preferences.
+     * This method is called when the device receives a SET_DEVICENAME command from the Improv protocol.
+     */
+    improv::Error setDeviceName(const char *deviceName) override {
+        if (prefs.putString("devicename", deviceName) == 0) {
+            return improv::Error::ERROR_UNKNOWN;
+        }
+
+        return improv::Error::ERROR_NONE;
+    }
 };
 
-MyImprovWiFiDevice improvWiFiDevice(manifest[0], manifest[1], manifest[2], manifest[3]);
+MyImprovWiFiDevice improvWiFiDevice(manifest[0], manifest[1], getChipVariant(), getDeviceName());
 
 void setup() {
     Serial.begin(115200);
-    improvWiFiDevice.begin();
+
+    WiFi.mode(WIFI_STA);
+
+    // if a hostname is saved in preferences, set it as the device's hostname
+    String savedHost = getHostName();
+    if (savedHost.length() > 0) {
+        WiFi.setHostname(savedHost.c_str());
+    }
 }
 
 void loop() {
+    // handle any incoming Improv commands and responses
     improvWiFiDevice.loop();
 }
