@@ -32,9 +32,11 @@
   "export": {
     "exclude": [
       ".vscode",
+      ".github",
       ".git",
       ".gitignore",
-      "platformio.ini"
+      "platformio.ini",
+      "RELEASING.md"
     ]
   }
 }
