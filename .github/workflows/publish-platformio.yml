@@ -40,8 +40,8 @@ jobs:
 
       - name: Build examples (CI check)
         run: |
-          pio ci examples/Example/Example.ino --lib="." --board=esp32dev
-          pio ci examples/WiFiDeviceExample/WiFiDeviceExample.ino --lib="." --board=esp32dev
+          pio ci examples/Example.ino --lib="." --board=esp32dev
+          pio ci examples/WiFiDeviceExample.ino --lib="." --board=esp32dev
 
       - name: Publish package to PlatformIO Registry
         env:
