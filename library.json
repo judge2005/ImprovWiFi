@@ -1,22 +1,40 @@
 {
-    "name": "ImprovWiFi",
-    "version": "0.2.0",
-    "description": "An object-oriented implementation of the esp web tools improv serial protocol for provisioning ESP32 devices",
-    "keywords": "wifi,wi-fi,esp,esp32,espressif32,improv,provision,provisioning,arduino",
-    "repository":
+  "name": "ImprovWiFi",
+  "version": "0.2.0",
+  "description": "An object-oriented implementation of the esp web tools improv serial protocol for provisioning ESP32 devices",
+  "keywords": [
+    "wifi",
+    "wi-fi",
+    "esp",
+    "esp32",
+    "espressif32",
+    "improv",
+    "esp-web-tools",
+    "serial",
+    "provision",
+    "provisioning",
+    "arduino"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com"
+  },
+  "authors": [
     {
-      "type": "git",
-      "url": "https://github.com/judge2005/ImprovWiFi.git"
-    },
-    "authors":
-    [
-      {
-        "name": "Paul Andrews",
-        "maintainer": true
-      }
-    ],
-    "license": "MIT",
-    "homepage": "https://www.helloworld.org/",
-    "frameworks": ["arduino"],
-    "platforms": ["espressif32"]
+      "name": "Paul Andrews",
+      "maintainer": true
+    }
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com",
+  "frameworks": ["arduino"],
+  "platforms": ["espressif32"],
+  "export": {
+    "exclude": [
+      ".vscode",
+      ".git",
+      ".gitignore",
+      "platformio.ini"
+    ]
   }
+}
