@@ -25,6 +25,8 @@ protected:
     void send_response(std::vector<uint8_t> &response);
     void set_error(improv::Error error);
 
+    static std::string getLocalIPUrl();
+
     String deviceName;
 
 private:

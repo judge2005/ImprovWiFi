@@ -1,5 +1,6 @@
 #include <cctype>
 #include <cstring>
+#include <WiFi.h>
 #include "ImprovWiFiDevice.h"
 
 bool ImprovWiFiDevice::isValidHostName(const char *hostName) {
@@ -39,6 +40,22 @@ bool ImprovWiFiDevice::getDeviceName(String &deviceName) {
 
 improv::Error ImprovWiFiDevice::setDeviceName(const char *deviceName) {
   return improv::Error::ERROR_UNKNOWN_RPC;
+}
+
+uint8_t ImprovWiFiDevice::getNetworkState() {
+  uint8_t state = improv::NetworkState::NETWORK_SUPPORTS_WIFI;
+  if (WiFi.status() == WL_CONNECTED) {
+    state |= improv::NetworkState::NETWORK_IS_ONLINE;
+  }
+  return state;
+}
+
+std::vector<std::string> ImprovWiFiDevice::getNetworkUrls() {
+  std::vector<std::string> urls;
+  if (WiFi.status() == WL_CONNECTED) {
+    urls.push_back(getLocalIPUrl());
+  }
+  return urls;
 }
 
 bool ImprovWiFiDevice::handleProperty(
@@ -87,6 +104,21 @@ bool ImprovWiFiDevice::onCommand(const improv::ImprovCommand &cmd) {
 
     case improv::Command::DEVICE_NAME:
       return handleProperty(cmd, &ImprovWiFiDevice::getDeviceName, &ImprovWiFiDevice::setDeviceName);
+
+    case improv::Command::GET_NETWORK_STATE: {
+      uint8_t state = getNetworkState();
+      std::vector<std::string> payload = {std::to_string(state)};
+
+      if (state & improv::NetworkState::NETWORK_IS_ONLINE) {
+        std::vector<std::string> urls = getNetworkUrls();
+        payload.insert(payload.end(), urls.begin(), urls.end());
+      }
+
+      std::vector<uint8_t> data = improv::build_rpc_response(
+          improv::Command::GET_NETWORK_STATE, payload, false);
+      send_response(data);
+      return true;
+    }
 
     default:
       return ImprovWiFi::onCommand(cmd);

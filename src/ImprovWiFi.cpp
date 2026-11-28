@@ -37,6 +37,14 @@ void ImprovWiFi::onDebug(const char *msg) {
   debugCallback(msg);
 }
 
+std::string ImprovWiFi::getLocalIPUrl() {
+  uint32_t ip = WiFi.localIP();
+  char szRet[30];
+  snprintf(szRet, sizeof(szRet), "http://%u.%u.%u.%u/",
+           ip & 0xff, (ip >> 8) & 0xff, (ip >> 16) & 0xff, ip >> 24);
+  return std::string(szRet);
+}
+
 void ImprovWiFi::loop() {
   if (pendingResponse == improv::Command::WIFI_SETTINGS) {
     if (WiFi.status() == WL_CONNECTED) {
@@ -164,12 +172,8 @@ void ImprovWiFi::sendDeviceInfo(const char *name) {
 void ImprovWiFi::sendProvisioned(improv::Command responseTo) {
   set_state(improv::STATE_PROVISIONED);
 
-  uint32_t ip = WiFi.localIP();
-  char szRet[30];
-  sprintf(szRet,"http://%u.%u.%u.%u/", ip & 0xff, (ip >> 8) & 0xff, (ip >> 16) & 0xff, ip >> 24);
-
   std::vector<std::string> urls = {
-      szRet
+      getLocalIPUrl()
   };
 
   std::vector<uint8_t> data = improv::build_rpc_response(responseTo, urls, false);

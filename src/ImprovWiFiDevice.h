@@ -18,6 +18,9 @@ protected:
     virtual bool getDeviceName(String &deviceName);
     virtual improv::Error setDeviceName(const char *deviceName);
 
+    virtual uint8_t getNetworkState();
+    virtual std::vector<std::string> getNetworkUrls();
+
 private:
     bool handleProperty(
         const improv::ImprovCommand &cmd,
