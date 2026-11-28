@@ -3,16 +3,11 @@
 #include <WiFi.h>
 #include <ImprovWiFiDevice.h>
 
-// Should match what is in example-manifest.json
-const char *manifest[] = {
-    // Firmware name
-    "Test for ImprovWiFi",
-    // Firmware version
-    "1.0.0"
-};
-
 Preferences prefs;
 
+/**
+ * So we have somwhere to store the hostname and device name.
+ */
 void initPrefs() {
     static bool initialized = false;
     if (initialized) {
@@ -48,6 +43,10 @@ const char *getChipVariant() {
     return ESP.getChipModel();
 }
 
+/**
+ * Subclass of ImprovWiFiDevice that implements the connectWiFi, getHostName, setHostName, getDeviceName,
+ * and setDeviceName methods using the WiFi library and Preferences.
+ */
 class MyImprovWiFiDevice : public ImprovWiFiDevice {
 public:
     MyImprovWiFiDevice(const char *firmwareName, const char *version, const char *chip, const char *deviceName)
@@ -116,7 +115,7 @@ protected:
     }
 };
 
-MyImprovWiFiDevice improvWiFiDevice(manifest[0], manifest[1], getChipVariant(), getDeviceName());
+MyImprovWiFiDevice improvWiFiDevice("Test for ImprovWiFi", "1.0.0", getChipVariant(), getDeviceName());
 
 void setup() {
     Serial.begin(115200);

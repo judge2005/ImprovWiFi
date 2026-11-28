@@ -13,123 +13,42 @@ ESP Web Tools lets a browser that supports serial port access (for example Chrom
 
 ## ImprovWiFi
 
-`ImprovWiFi` provides the base serial protocol implementation. Construct it with the firmware name, firmware version, hardware chip, and default device name.
+`ImprovWiFi` is the original class that implements all the functions to add ESP Web Tools WiFi provisioning to your
+ESP32 device:
 
-```cpp
-#include <Arduino.h>
-#include <WiFi.h>
-#include <ImprovWiFi.h>
-
-ImprovWiFi improvWiFi(
-    "Test for ImprovWiFi",
-    "1.0.0",
-    "ESP32",
-    "Whatever"
-);
-
-void setWiFiCredentials(const char *ssid, const char *password) {
-    WiFi.disconnect();
-    WiFi.begin(ssid, password);
-}
-
-void setup() {
-    Serial.begin(115200);
-    improvWiFi.setWiFiCallback(setWiFiCredentials);
-}
-
-void loop() {
-    improvWiFi.loop();
-}
-```
-
-### Base class setup
-
-1. Declare an `ImprovWiFi` instance with the manifest information.
+1. Declare an `ImprovWiFi` instance with a description of the device, the version, the chip type and a device name.
 2. Define a Wi-Fi callback with `setWiFiCallback()`.
-3. Optionally define info and debug callbacks with `setInfoCallback()` and `setDebugCallback()`.
+3. Optionally define info and debug callbacks with `setInfoCallback()` and `setDebugCallback()` to print info and
+debug messages if your device has some way of displaying them that isn't the serial port that improv is using!
 4. Call `loop()` regularly. It never waits for a Wi-Fi connection and is safe for the Arduino loop to continue running.
 
 The Wi-Fi callback is responsible for starting the connection asynchronously. The library detects `WiFi.status() == WL_CONNECTED`, sends the provisioning response, and reports `http://<device-ip>/`.
 
+Look at examples/Example.ino for some example code.
+
 ## ImprovWiFiDevice
 
-`ImprovWiFiDevice` inherits from `ImprovWiFi` and adds support for reading and setting a hostname and device name through Improv commands. The methods are virtual, so subclass it and persist or apply values as needed.
+`ImprovWiFiDevice` inherits from `ImprovWiFi` and adds support for reading and setting a hostname and device name through Improv commands. This changes the way that callbacks are handled. It has virtual methods for Wifi, Device name and Host name provisioning
+so you should create a sub-class of `ImprovWiFiDevice` and override the specific methods you need for your implementation:
 
-```cpp
-#include <Arduino.h>
-#include <Preferences.h>
-#include <WiFi.h>
-#include <ImprovWiFiDevice.h>
+1. Define a subclass of `ImprovWiFiDevice` - overriding only those methods you need for your device/implementation.
+2. Declare an instance of your subclass making sure you pass the device description, version, chip type and device name
+to the `ImprovWiFiDevice` constructor
+3. Call `loop()` regularly. It never waits for a Wi-Fi connection and is safe for the Arduino loop to continue running.
 
-class MyImprovWiFiDevice : public ImprovWiFiDevice {
-public:
-    using ImprovWiFiDevice::ImprovWiFiDevice;
-
-    void begin() {
-        prefs.begin("improv", false);
-        WiFi.mode(WIFI_STA);
-
-        String savedHost = prefs.getString("hostname", "");
-        if (savedHost.length() > 0) {
-            WiFi.setHostname(savedHost.c_str());
-        }
-    }
-
-protected:
-    void connectWiFi(const char *ssid, const char *password) override {
-        WiFi.disconnect();
-        WiFi.begin(ssid, password);
-    }
-
-    bool getHostName(String &hostName) override {
-        hostName = prefs.getString("hostname", "");
-        return true;
-    }
-
-    improv::Error setHostName(const char *hostName) override {
-        if (prefs.putString("hostname", hostName) == 0) {
-            return improv::Error::ERROR_UNKNOWN;
-        }
-        WiFi.setHostname(hostName);
-        return improv::Error::ERROR_NONE;
-    }
-
-    bool getDeviceName(String &deviceName) override {
-        deviceName = prefs.getString("device-name", "");
-        return deviceName.length() > 0;
-    }
-
-    improv::Error setDeviceName(const char *deviceName) override {
-        if (prefs.putString("device-name", deviceName) == 0) {
-            return improv::Error::ERROR_UNKNOWN;
-        }
-        return improv::Error::ERROR_NONE;
-    }
-
-private:
-    Preferences prefs;
-};
-
-MyImprovWiFiDevice device("Test for ImprovWiFi", "1.0.0", "ESP32", "Whatever");
-
-void setup() {
-    Serial.begin(115200);
-    device.begin();
-}
-
-void loop() {
-    device.loop();
-}
-```
-
-For `ImprovWiFiDevice`, implement the following protected methods:
-
-- `getHostName(String &hostName)` and `setHostName(const char *hostName)`
-- `getDeviceName(String &deviceName)` and `setDeviceName(const char *deviceName)`
+- `connectWiFi(const char *ssid, const char *password)` to connect your device to WiFi
+- `getHostName(String &hostName)` and `setHostName(const char *hostName)` to get/set your hostname
+- `getDeviceName(String &deviceName)` and `setDeviceName(const char *deviceName)` to get/set your device name
+- `onInfo(const char *msg)` if you can output info level messages without using the same serial device is improv.
+- `onDebug(const char *msg)` if you can output debug level messages without using the same serial device is improv.
 
 `get*()` should return `true` when it supplies a value. `set*()` should return `improv::Error::ERROR_NONE` on success or an appropriate Improv error on failure. Hostnames are validated before `setHostName()` is called; names may contain letters, numbers, and hyphens, but may not start or end with a hyphen.
 
 If a property getter is not implemented, `ImprovWiFiDevice` falls back to the constructor's default device name for `GET_DEVICE_INFO`, and reports unknown-command errors for unsupported property operations.
+
+The `connectWiFi()` is responsible for starting the connection asynchronously. The library detects `WiFi.status() == WL_CONNECTED`, sends the provisioning response, and reports `http://<device-ip>/`.
+
+Look at examples/WiFiDeviceExample.ino for some example code.
 
 Writing application messages directly to the serial port can interfere with Improv messaging. Prefer the optional info and debug callbacks for status reporting, or use another output mechanism such as Wi-Fi or a display.
 
